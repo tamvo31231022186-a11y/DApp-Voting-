@@ -1,0 +1,885 @@
+<!DOCTYPE html>
+
+<html lang="vi"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>VOX_GOV - Dashboard Bầu Chọn Môn Học</title>
+<!-- Tailwind CSS v3 CDN -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- React and Babel -->
+<script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.9.2/dist/ethers.umd.min.js" type="application/javascript"></script>
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<!-- Google Fonts: Manrope -->
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<script>
+        tailwind.config = {
+          theme: {
+            extend: {
+              fontFamily: {
+                manrope: ['Manrope', 'sans-serif'],
+              },
+              colors: {
+                'vox-dark': '#08090a',
+                'vox-card': 'rgba(13, 14, 18, 0.7)',
+                'vox-accent': '#ff2d78',
+                'vox-neon': '#ff2d78',
+                'vox-glow': 'rgba(255, 45, 120, 0.4)',
+              },
+            },
+          },
+        };
+    </script>
+<style data-purpose="custom-glassmorphism">
+        body {
+          background-color: #08090a;
+          color: #ffffff;
+          font-family: 'Manrope', sans-serif;
+        }
+
+        .glass-nav {
+          background: rgba(8, 9, 10, 0.85);
+          backdrop-filter: blur(16px);
+          border-bottom: 1px solid rgba(255, 45, 120, 0.1);
+        }
+
+        .glass-card {
+          background: rgba(13, 14, 18, 0.6);
+          backdrop-filter: blur(12px);
+          border: 1px solid rgba(255, 45, 120, 0.15);
+          border-radius: 1.5rem;
+          transition: border-color 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .glass-card:hover {
+          border-color: rgba(255, 45, 120, 0.3);
+          box-shadow: 0 0 20px rgba(255, 45, 120, 0.05);
+        }
+
+        .progress-bar-bg {
+          background: rgba(255, 255, 255, 0.03);
+          border-radius: 999px;
+          height: 8px;
+        }
+
+        .progress-bar-fill {
+          height: 100%;
+          border-radius: 999px;
+          background: linear-gradient(90deg, #ff2d78 0%, #ff7eb3 100%);
+          box-shadow: 0 0 15px rgba(255, 45, 120, 0.5);
+          transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .neon-button {
+          background: linear-gradient(135deg, #ff2d78 0%, #d4145a 100%);
+          box-shadow: 0 4px 20px rgba(255, 45, 120, 0.3);
+          transition: all 0.3s ease;
+          border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .neon-button:hover:not(:disabled) {
+          box-shadow: 0 4px 30px rgba(255, 45, 120, 0.6);
+          transform: translateY(-2px);
+          filter: brightness(1.1);
+        }
+
+        .neon-button:disabled {
+            background: #2a2c31;
+            opacity: 0.5;
+            cursor: not-allowed;
+            box-shadow: none;
+            filter: grayscale(1);
+        }
+
+        .chart-container {
+          position: relative;
+          width: 220px;
+          height: 220px;
+        }
+
+        .chart-label {
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          text-align: center;
+          pointer-events: none;
+        }
+
+        .glow-text-neon {
+          text-shadow: 0 0 10px rgba(255, 45, 120, 0.5);
+        }
+    </style>
+</head>
+<body class="min-h-screen font-manrope">
+<div id="root"></div>
+<script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    const OWNER_ADDRESS = "0xAdmin1234567890abcdef";
+    const USER_ADDRESS = "0x71C...4f2a";
+    const CONTRACT_ADDRESS = "0x5FbDB2315678afecb367f032d93F642f64180aa3"; // Thay thế bằng địa chỉ Voting contract đã deploy
+
+    const ABI = [
+        {
+            "inputs": [],
+            "stateMutability": "nonpayable",
+            "type": "constructor"
+        },
+        {
+            "inputs": [],
+            "name": "getAllCandidates",
+            "outputs": [
+                {
+                    "components": [
+                        { "internalType": "uint256", "name": "id", "type": "uint256" },
+                        { "internalType": "string", "name": "name", "type": "string" },
+                        { "internalType": "uint256", "name": "voteCount", "type": "uint256" }
+                    ],
+                    "internalType": "struct Voting.Candidate[]",
+                    "name": "",
+                    "type": "tuple[]"
+                }
+            ],
+            "stateMutability": "view",
+            "type": "function"
+        },
+        {
+            "inputs": [
+                { "internalType": "address", "name": "_address", "type": "address" }
+            ],
+            "name": "addToWhitelist",
+            "outputs": [],
+            "stateMutability": "nonpayable",
+            "type": "function"
+        },
+        {
+            "inputs": [
+                { "internalType": "uint256", "name": "_candidateId", "type": "uint256" }
+            ],
+            "name": "vote",
+            "outputs": [],
+            "stateMutability": "nonpayable",
+            "type": "function"
+        },
+        {
+            "inputs": [
+                { "internalType": "address", "name": "", "type": "address" }
+            ],
+            "name": "hasVoted",
+            "outputs": [
+                { "internalType": "bool", "name": "", "type": "bool" }
+            ],
+            "stateMutability": "view",
+            "type": "function"
+        },
+        {
+            "inputs": [
+                { "internalType": "address", "name": "", "type": "address" }
+            ],
+            "name": "isWhitelisted",
+            "outputs": [
+                { "internalType": "bool", "name": "", "type": "bool" }
+            ],
+            "stateMutability": "view",
+            "type": "function"
+        },
+        {
+            "inputs": [],
+            "name": "owner",
+            "outputs": [
+                { "internalType": "address", "name": "", "type": "address" }
+            ],
+            "stateMutability": "view",
+            "type": "function"
+        }
+    ];
+
+    const App = () => {
+        const [isVoting, setIsVoting] = useState(false);
+        const [hasVoted, setHasVoted] = useState(false);
+        const [selectedCourseId, setSelectedCourseId] = useState("");
+        const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
+        const [isOwner, setIsOwner] = useState(false);
+        const [account, setAccount] = useState(null);
+        const [contractOwner, setContractOwner] = useState(null);
+        const [contractWhitelisted, setContractWhitelisted] = useState(false);
+        const [whitelistInput, setWhitelistInput] = useState("");
+        
+        const chartRef = useRef(null);
+        const chartInstance = useRef(null);
+
+        const [courses, setCourses] = useState([]);
+
+        const [whitelist, setWhitelist] = useState([]);
+
+        const [txHistory, setTxHistory] = useState([]);
+
+        const showToast = (message, type = 'success') => {
+            setToast({ show: true, message, type });
+            setTimeout(() => setToast({ show: false, message: '', type: 'success' }), 5000);
+        };
+
+const isValidContractAddress = (address) => /^0x[a-fA-F0-9]{40}$/.test(address) && address !== "0x0000000000000000000000000000000000000000";
+
+const getVotingContract = (providerOrSigner) => new ethers.Contract(CONTRACT_ADDRESS, ABI, providerOrSigner);
+
+const fetchContractData = async (currentAccount) => {
+    console.log('🔍 fetchContractData called for:', currentAccount);
+    if (!window.ethereum || !isValidContractAddress(CONTRACT_ADDRESS)) {
+        console.log('❌ Invalid ethereum or contract address');
+        return false;
+    }
+
+    try {
+        console.log('📡 Creating provider and contract...');
+        const provider = new ethers.BrowserProvider(window.ethereum);
+        const contract = getVotingContract(provider);
+
+        console.log('👑 Fetching owner address...');
+        const ownerAddress = await contract.owner();
+        console.log('👑 Owner address:', ownerAddress);
+        setContractOwner(ownerAddress);
+
+        if (currentAccount) {
+            console.log('🔍 Checking whitelist and vote status for:', currentAccount);
+            const [whitelisted, voted] = await Promise.all([
+                contract.isWhitelisted(currentAccount),
+                contract.hasVoted(currentAccount)
+            ]);
+            console.log('✅ Whitelisted:', whitelisted, 'Voted:', voted);
+
+            setContractWhitelisted(whitelisted);
+            setHasVoted(voted);
+            const isOwnerCheck = currentAccount.toLowerCase() === ownerAddress.toLowerCase();
+            console.log('👑 Is owner check:', currentAccount.toLowerCase(), '===', ownerAddress.toLowerCase(), '=', isOwnerCheck);
+            setIsOwner(isOwnerCheck);
+        }
+
+        console.log('📊 Fetching candidates data...');
+        const candidatesData = await contract.getAllCandidates();
+        console.log('📊 Candidates data:', candidatesData);
+        if (Array.isArray(candidatesData)) {
+            const newCourses = candidatesData.map(c => ({
+                id: Number(c.id),
+                name: c.name,
+                votes: Number(c.voteCount),
+                percentage: 0
+            }));
+
+            const total = newCourses.reduce((acc, item) => acc + item.votes, 0);
+            setCourses(newCourses.map(course => ({
+                ...course,
+                percentage: total > 0 ? Math.round((course.votes / total) * 100) : 0
+            })));
+        }
+
+        console.log('✅ fetchContractData completed successfully');
+        return true;
+    } catch (error) {
+        console.error('❌ Lỗi khi đọc dữ liệu contract:', error);
+        return false;
+    }
+};
+
+const connectWallet = async () => {
+    if (typeof window.ethereum !== 'undefined') {
+        try {
+            console.log('🔗 Đang kết nối ví...');
+            const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+            const selected = accounts[0];
+            console.log('✅ Đã kết nối account:', selected);
+
+            setAccount(selected);
+            setHasVoted(false);
+            setContractWhitelisted(false);
+            setIsOwner(false);
+
+            showToast(`Connected: ${selected.slice(0, 6)}...${selected.slice(-4)}`, "success");
+            await fetchContractData(selected);
+        } catch (error) {
+            console.error('❌ Lỗi kết nối:', error);
+            showToast("Kết nối ví thất bại hoặc bị từ chối", "error");
+        }
+    } else {
+        showToast("Vui lòng cài đặt MetaMask!", "error");
+    }
+};
+
+        const disconnect = () => {
+            setAccount(null);
+            setIsOwner(false);
+            setHasVoted(false);
+            setContractWhitelisted(false);
+            showToast("Wallet disconnected", "success");
+        };
+
+        const isAddressWhitelisted = (addr) => {
+            if (!addr || !Array.isArray(whitelist)) return false;
+            return whitelist.some(item => item.fullAddress === addr);
+        };
+
+        useEffect(() => {
+            if (!window.ethereum) return;
+            
+            const handleAccountsChanged = async (accounts) => {
+                console.log('🔄 Account thay đổi:', accounts);
+                if (accounts.length === 0) {
+                    console.log('❌ Ngắt kết nối');
+                    disconnect();
+                } else {
+                    const newAccount = accounts[0];
+                    console.log('✅ Kết nối account:', newAccount);
+                    setAccount(newAccount);
+                    setHasVoted(false);
+                    setContractWhitelisted(false);
+                    setIsOwner(false);
+                    
+                    // Fetch data khi chuyển account
+                    const success = await fetchContractData(newAccount);
+                    console.log('📊 Fetch contract data:', success ? 'Thành công' : 'Thất bại');
+                }
+            };
+
+            window.ethereum.on('accountsChanged', handleAccountsChanged);
+            return () => {
+                if (window.ethereum.removeListener) {
+                    window.ethereum.removeListener('accountsChanged', handleAccountsChanged);
+                }
+            };
+        }, []);
+
+        useEffect(() => {
+            if (chartRef.current && Array.isArray(courses)) {
+                const ctx = chartRef.current.getContext('2d');
+                if (chartInstance.current) {
+                    chartInstance.current.destroy();
+                }
+
+                chartInstance.current = new Chart(ctx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: courses.map(c => c.name),
+                        datasets: [{
+                            data: courses.map(c => c.votes),
+                            backgroundColor: ['#ff2d78', '#ff7eb3', '#800040'],
+                            borderWidth: 2,
+                            borderColor: '#08090a',
+                            hoverOffset: 8
+                        }]
+                    },
+                    options: {
+                        cutout: '80%',
+                        plugins: { legend: { display: false } },
+                        responsive: true,
+                        maintainAspectRatio: false
+                    }
+                });
+            }
+        }, [courses]);
+
+const handleVote = async () => {
+    if (hasVoted) return;
+    if (!account) return;
+    
+    if (selectedCourseId === "") {
+        showToast("Lỗi: Vui lòng chọn môn học trước khi bỏ phiếu!", "error");
+        return;
+    }
+
+    setIsVoting(true);
+    try {
+        const idx = parseInt(selectedCourseId);
+        const selectedCourseName = courses[idx].name;
+
+        if (!isValidContractAddress(CONTRACT_ADDRESS)) {
+            showToast("Vui lòng cấu hình CONTRACT_ADDRESS của Voting contract.", "error");
+            setIsVoting(false);
+            return;
+        }
+
+        const provider = new ethers.BrowserProvider(window.ethereum);
+        const signer = await provider.getSigner();
+        const votingContract = getVotingContract(signer);
+        const tx = await votingContract.vote(idx);
+        const receipt = await tx.wait();
+        const txHash = receipt.transactionHash || tx.hash || '';
+
+        showToast(`Bỏ phiếu thành công cho ${selectedCourseName}!`, "success");
+        setHasVoted(true);
+
+        const newTx = {
+            id: txHash || Date.now().toString(),
+            hash: txHash ? `${txHash.slice(0, 6)}...${txHash.slice(-4)}` : 'N/A',
+            block: receipt.blockNumber ? receipt.blockNumber.toString() : 'N/A',
+            time: 'Vừa xong',
+            action: 'VOTED'
+        };
+
+        setTxHistory(prev => [newTx, ...(Array.isArray(prev) ? prev : [])]);
+
+        if (account) {
+            await fetchContractData(account);
+        }
+
+    } catch (error) {
+        console.error("Lỗi giao dịch:", error);
+        let msg = "Đã có lỗi xảy ra. Vui lòng thử lại.";
+        
+  
+        if (error.code === 'ACTION_REJECTED' || error.code === 4001) {
+            msg = "Giao dịch bị từ chối bởi người dùng.";
+        } 
+    
+        else if (error.reason) {
+            msg = error.reason; 
+        }
+        
+        showToast(msg, "error");
+    } finally {
+        setIsVoting(false);
+    }
+};
+
+        const handleAddWhitelist = async () => {
+            if (!whitelistInput || !whitelistInput.startsWith('0x')) {
+                showToast("Vui lòng nhập địa chỉ ví hợp lệ!", "error");
+                return;
+            }
+
+            if (!account) {
+                showToast("Vui lòng kết nối ví owner trước khi cấp whitelist.", "error");
+                return;
+            }
+
+            if (!isOwner) {
+                showToast("Chỉ owner mới có thể cấp whitelist.", "error");
+                return;
+            }
+
+            if (!isValidContractAddress(CONTRACT_ADDRESS)) {
+                showToast("Vui lòng cấu hình CONTRACT_ADDRESS của Voting contract.", "error");
+                return;
+            }
+
+            try {
+                const provider = new ethers.BrowserProvider(window.ethereum);
+                const signer = await provider.getSigner();
+                const votingContract = getVotingContract(signer);
+
+                const alreadyWhitelisted = await votingContract.isWhitelisted(whitelistInput);
+                if (alreadyWhitelisted) {
+                    showToast("Địa chỉ này đã được whitelist trước đó.", "error");
+                    return;
+                }
+
+                const tx = await votingContract.addToWhitelist(whitelistInput);
+                const receipt = await tx.wait();
+                const txHash = receipt.transactionHash || tx.hash || '';
+
+                const newItem = {
+                    id: Date.now(),
+                    address: whitelistInput.slice(0, 6) + "..." + whitelistInput.slice(-4),
+                    fullAddress: whitelistInput,
+                    status: "ĐÃ CẤP QUYỀN",
+                    power: "1 Vote"
+                };
+
+                const newTx = {
+                    id: txHash || Date.now().toString(),
+                    hash: txHash ? `${txHash.slice(0, 6)}...${txHash.slice(-4)}` : 'N/A',
+                    block: receipt.blockNumber ? receipt.blockNumber.toString() : 'N/A',
+                    time: 'Vừa xong',
+                    action: 'WHITELISTED'
+                };
+
+                setWhitelist(prev => [newItem, ...(Array.isArray(prev) ? prev : [])]);
+                setTxHistory(prev => [newTx, ...(Array.isArray(prev) ? prev : [])]);
+                setWhitelistInput("");
+                if (whitelistInput.toLowerCase() === account?.toLowerCase()) {
+                    setContractWhitelisted(true);
+                }
+                showToast("Đã thêm địa chỉ vào danh sách Whitelist", "success");
+                if (account) {
+                    await fetchContractData(account);
+                }
+            } catch (error) {
+                console.error(error);
+                let msg = "Lỗi khi cập nhật whitelist contract.";
+                if (error.code === 'ACTION_REJECTED' || error.code === 4001) {
+                    msg = "Giao dịch bị từ chối bởi người dùng.";
+                } else if (error.reason) {
+                    msg = error.reason;
+                } else if (error.error && error.error.message) {
+                    msg = error.error.message;
+                }
+                showToast(msg, "error");
+            }
+        };
+
+        const totalVotes = Array.isArray(courses) ? courses.reduce((acc, curr) => acc + (curr.votes || 0), 0) : 0;
+
+        const WalletSection = ({ variant = "header" }) => {
+            if (account) {
+                return (
+                    <div className="flex items-center space-x-3">
+                        <div className={`bg-vox-accent/10 border border-vox-accent/30 rounded-full px-4 py-1.5 flex items-center space-x-2`}>
+                            <div className="w-2 h-2 rounded-full animate-pulse bg-vox-accent"></div>
+                            <span className="text-xs font-semibold text-vox-accent">{isOwner ? 'Owner' : 'Account'}:</span>
+                            <span className="text-xs font-mono text-white">{account.slice(0, 6)}...{account.slice(-4)}</span>
+                        </div>
+                        <button 
+                            onClick={disconnect}
+                            className={`text-xs font-bold px-3 py-1.5 rounded-full border border-red-500/30 text-red-400 hover:bg-red-500/10 transition-colors ${variant === 'header' ? 'hidden md:block' : ''}`}
+                        >
+                            Disconnect
+                        </button>
+                    </div>
+                );
+            }
+
+            return (
+                <button 
+                    onClick={connectWallet}
+                    className={`${variant === 'hero' ? 'glass-card px-8 py-3.5 mb-6' : 'bg-vox-neon/20 border border-vox-neon/50 text-vox-neon px-4 py-1.5 rounded-full text-xs'} flex items-center space-x-2 font-bold hover:bg-vox-neon/30 transition-all shadow-lg shadow-vox-neon/10`}
+                >
+                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+                    <span>Connect Wallet</span>
+                </button>
+            );
+        };
+
+        const votingEnabled = account && (isAddressWhitelisted(account) || contractWhitelisted);
+        console.log('🔍 Debug voting:', {
+            account,
+            isAddressWhitelisted: isAddressWhitelisted(account),
+            contractWhitelisted,
+            votingEnabled,
+            hasVoted
+        });
+
+        return (
+            <div className="min-h-screen bg-vox-dark font-manrope">
+                {/* Toast Notification */}
+                {toast.show && (
+                    <div className={`fixed top-6 right-6 z-[100] p-4 rounded-2xl shadow-2xl border flex items-center space-x-3 backdrop-blur-xl transition-all duration-300 ${toast.type === 'success' ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-400' : 'bg-vox-accent/20 border-vox-accent/50 text-vox-accent'}`}>
+                        <div className="flex-shrink-0">
+                            {toast.type === 'success' ? (
+                                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>
+                            ) : (
+                                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" /></svg>
+                            )}
+                        </div>
+                        <span className="text-sm font-bold">{toast.message}</span>
+                    </div>
+                )}
+
+                <header className="glass-nav sticky top-0 z-50 px-6 py-4">
+                    <div className="max-w-7xl mx-auto flex items-center justify-between">
+                        <div className="flex items-center space-x-12">
+                            <div className="text-2xl font-extrabold tracking-tighter text-vox-accent glow-text-neon" data-purpose="logo">VOX_GOV</div>
+                            <nav className="hidden md:flex space-x-8 text-sm font-medium text-slate-400">
+                                <a className="text-white border-b-2 border-vox-accent pb-1" href="#">Môn học</a>
+                                <a className="hover:text-vox-accent transition-colors" href="#">Ngân sách</a>
+                                <a className="hover:text-vox-accent transition-colors" href="#">Quản trị</a>
+                                <a className="hover:text-vox-accent transition-colors" href="#">Phân tích</a>
+                            </nav>
+                        </div>
+                        <div className="flex items-center space-x-4">
+                            <button className="p-2 text-slate-400 hover:text-vox-accent transition-colors">
+                                <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+                            </button>
+                            <WalletSection variant="header" />
+                        </div>
+                    </div>
+                </header>
+
+                <main className="max-w-7xl mx-auto px-6 py-12">
+                    <section className="mb-12" data-purpose="hero">
+                        <h1 className="text-5xl font-extrabold mb-6 tracking-tight text-white glow-text-neon">Hệ thống bầu chọn môn học tự chọn</h1>
+                        <WalletSection variant="hero" />
+                        <p className="text-slate-400 max-w-2xl leading-relaxed">
+                            Thực hiện bầu chọn cho các môn học chuyên ngành. Quyền bầu chọn của bạn trực tiếp quyết định kế hoạch giảng dạy của học kỳ này.
+                        </p>
+                    </section>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                        <div className="lg:col-span-2 space-y-8">
+                            <div className="glass-card p-8" data-purpose="course-list">
+                                <div className="flex justify-between items-center mb-10">
+                                    <h2 className="text-2xl font-bold">Danh sách môn học</h2>
+                                    <span className="px-3 py-1 bg-vox-accent/10 border border-vox-accent/20 rounded-full text-[10px] uppercase font-bold text-vox-accent tracking-widest">Live Session</span>
+                                </div>
+                                <div className="space-y-6">
+                                    {Array.isArray(courses) && courses.map(course => (
+                                        <div key={course.id} className="bg-white/[0.02] p-6 rounded-2xl border border-white/5 hover:border-vox-accent/20 transition-all">
+                                            <div className="flex justify-between items-center mb-4">
+                                                <span className="text-slate-400 font-bold">#{course.id + 1} <span className="text-white ml-2">{course.name}</span></span>
+                                                <div className="text-right">
+                                                    <div className="text-xl font-bold text-vox-accent">{course.votes} người</div>
+                                                    <div className="text-xs text-slate-500">{course.percentage}% tổng số</div>
+                                                </div>
+                                            </div>
+                                            <div className="progress-bar-bg w-full">
+                                                <div className="progress-bar-fill" style={{ width: `${course.percentage}%` }}></div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="glass-card p-8" data-purpose="allocation-section">
+                                <div className="flex justify-between items-center mb-12">
+                                    <div>
+                                        <h2 className="text-2xl font-bold">Phân bổ phiếu bầu</h2>
+                                        <p className="text-sm text-slate-500 mt-1">Hiển thị số người tham gia theo từng môn học</p>
+                                    </div>
+                                    <button className="text-vox-accent opacity-70 hover:opacity-100 transition-opacity">
+                                        <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+                                    </button>
+                                </div>
+                                <div className="flex flex-col md:flex-row items-center justify-around">
+                                    <div className="chart-container mb-8 md:mb-0">
+                                        <canvas ref={chartRef}></canvas>
+                                        <div className="chart-label">
+                                            <div className="text-3xl font-extrabold text-vox-accent">{totalVotes}</div>
+                                            <div className="text-[10px] text-slate-500 uppercase tracking-tighter">Tổng số người tham gia</div>
+                                        </div>
+                                    </div>
+                                    <div className="space-y-4">
+                                        {Array.isArray(courses) && courses.map((course, idx) => (
+                                            <div key={`legend-${course.id}`} className="flex items-center space-x-3">
+                                                <div className={`w-3 h-3 rounded-full`} style={{ backgroundColor: ['#ff2d78', '#ff7eb3', '#800040'][idx % 3] }}></div>
+                                                <span className="text-sm font-medium text-slate-300">{course.name} — {course.votes} người ({course.percentage}%)</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <aside className="space-y-8">
+                            {/* ADMIN/OWNER SECTION */}
+                            {isOwner && (
+                                <div 
+                                    id="admin-panel" 
+                                    className="glass-card p-8 border-vox-neon/30 bg-vox-neon/5 transition-all duration-500 transform opacity-100 scale-100" 
+                                    data-purpose="admin-section"
+                                >
+                                    <div className="flex items-center space-x-4 mb-6">
+                                        <div className="p-3 bg-vox-neon/20 rounded-xl">
+                                            <svg className="h-6 w-6 text-vox-neon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+                                        </div>
+                                        <div>
+                                            <h3 className="text-lg font-bold text-vox-neon">KHU VỰC QUẢN TRỊ (OWNER)</h3>
+                                            <p className="text-[10px] text-slate-400 uppercase tracking-wider">Whitelist Management</p>
+                                        </div>
+                                    </div>
+                                    <p className="text-sm text-slate-400 mb-6">Thêm địa chỉ ví vào danh sách cử tri hợp lệ (Whitelist).</p>
+                                    <div className="space-y-4">
+                                        <div>
+                                            <label className="block text-[10px] uppercase font-bold text-slate-500 tracking-widest mb-2">Nhập địa chỉ ví (0x...)</label>
+                                            <input 
+                                                type="text" 
+                                                value={whitelistInput}
+                                                onChange={(e) => setWhitelistInput(e.target.value)}
+                                                placeholder="0x..." 
+                                                className="w-full bg-[#111318] border border-vox-accent/20 rounded-xl py-3 px-4 focus:ring-vox-neon focus:border-vox-neon text-sm font-mono text-white outline-none"
+                                            />
+                                        </div>
+                                        <button 
+                                            onClick={handleAddWhitelist}
+                                            className="w-full py-4 rounded-2xl font-bold bg-vox-neon text-white shadow-lg shadow-vox-neon/20 hover:shadow-vox-neon/40 transition-all flex items-center justify-center space-x-2"
+                                        >
+                                            <span>Cấp quyền bỏ phiếu</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="glass-card p-8 bg-vox-card shadow-2xl relative overflow-hidden" data-purpose="voting-form">
+                                {isVoting && (
+                                    <div className="absolute inset-0 z-10 bg-vox-dark/60 backdrop-blur-md flex flex-col items-center justify-center text-center p-6 space-y-4">
+                                        <div className="w-12 h-12 border-4 border-vox-accent border-t-transparent rounded-full animate-spin"></div>
+                                        <p className="text-sm font-bold text-white">Đang chờ blockchain xác nhận...</p>
+                                    </div>
+                                )}
+                                <div className="flex items-center space-x-4 mb-8">
+                                    <div className="p-3 bg-vox-accent/10 rounded-xl">
+                                        <svg className="h-6 w-6 text-vox-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+                                    </div>
+                                    <div>
+                                        <h3 className="text-lg font-bold">Thực hiện bỏ phiếu</h3>
+                                        <p className="text-xs text-slate-500">Quyền biểu quyết: 1,240 VOX</p>
+                                    </div>
+                                </div>
+                                <div className="space-y-6">
+                                    <div>
+                                        <label className="block text-[10px] uppercase font-bold text-slate-500 tracking-widest mb-3">Chọn môn học</label>
+                                        <div className="relative">
+                                            <select 
+                                                value={selectedCourseId}
+                                                onChange={(e) => setSelectedCourseId(e.target.value)}
+                                                className="w-full bg-[#111318] border border-vox-accent/20 rounded-xl py-3 px-4 appearance-none focus:ring-vox-accent focus:border-vox-accent text-white outline-none"
+                                            >
+                                                <option value="">--- Vui lòng chọn môn học ---</option>
+                                                {Array.isArray(courses) && courses.map(c => <option key={`opt-${c.id}`} value={c.id}>#{c.id + 1} {c.name}</option>)}
+                                            </select>
+                                            <div className="absolute inset-y-0 right-4 flex items-center pointer-events-none">
+                                                <svg className="h-5 w-5 text-vox-accent/60" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {!votingEnabled && (
+                                        <div className="p-3 bg-vox-accent/10 border border-vox-accent/30 rounded-xl">
+                                            <p className="text-[10px] text-vox-accent leading-relaxed font-bold uppercase text-center">
+                                                {account 
+                                                    ? "Địa chỉ ví của bạn chưa được cấp quyền tham gia bầu cử." 
+                                                    : "Vui lòng kết nối ví để tham gia bầu cử."}
+                                            </p>
+                                        </div>
+                                    )}
+
+                                    <div className="space-y-2 py-4 border-y border-white/5">
+                                        <div className="flex justify-between text-xs">
+                                            <span className="text-slate-500">Phí giao dịch</span>
+                                            <span className="text-vox-accent">~0.002 ETH</span>
+                                        </div>
+                                        <div className="flex justify-between text-xs">
+                                            <span className="text-slate-500">Thời gian khóa</span>
+                                            <span className="text-slate-300">7 Days</span>
+                                        </div>
+                                    </div>
+                                    <button 
+                                        onClick={handleVote}
+                                        disabled={isVoting || !votingEnabled || hasVoted || selectedCourseId === ""}
+                                        className={hasVoted 
+                                            ? "w-full py-4 px-6 rounded-xl bg-slate-700 text-slate-400 cursor-not-allowed opacity-70 flex items-center justify-center font-bold"
+                                            : "neon-button w-full py-4 rounded-2xl font-bold flex items-center justify-center space-x-2 text-white"
+                                        }
+                                    >
+                                        <span>{isVoting ? 'Processing...' : (hasVoted ? "ĐÃ BỎ PHIẾU" : "Bỏ phiếu ngay")}</span>
+                                        {!isVoting && !hasVoted && <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20"><path clipRule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" fillRule="evenodd"></path></svg>}
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div className="glass-card p-6" data-purpose="system-metrics">
+                                <h4 className="text-[10px] uppercase font-bold text-slate-500 tracking-widest mb-6">Tình trạng hệ thống</h4>
+                                <div className="mb-6">
+                                    <div className="flex justify-between text-sm mb-2">
+                                        <span className="font-medium text-slate-300">Số lượng tham gia</span>
+                                        <span className="font-bold text-vox-accent">82%</span>
+                                    </div>
+                                    <div className="progress-bar-bg w-full h-1.5">
+                                        <div className="progress-bar-fill" style={{ width: '82%' }}></div>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="bg-white/[0.03] p-4 rounded-2xl border border-white/5">
+                                        <div className="text-[10px] text-slate-500 mb-1">Người tham gia</div>
+                                        <div className="text-lg font-bold text-white">1.4k</div>
+                                    </div>
+                                    <div className="bg-white/[0.03] p-4 rounded-2xl border border-white/5">
+                                        <div className="text-[10px] text-slate-500 mb-1">Đã ủy quyền</div>
+                                        <div className="text-lg font-bold text-white">4.8M</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </aside>
+                    </div>
+
+                    {/* WHITELIST SECTION */}
+                    <div 
+                        className="glass-card p-8 mt-12 transition-all duration-500 transform opacity-100 scale-100" 
+                        data-purpose="whitelist-section"
+                    >
+                        <div className="flex justify-between items-center mb-8">
+                            <div>
+                                <h3 className="text-2xl font-bold">Danh sách Cử tri hợp lệ (Whitelist)</h3>
+                                <p className="text-sm text-slate-500 mt-1">Các địa chỉ ví đã được Owner cấp quyền bỏ phiếu</p>
+                            </div>
+                            <span className="px-4 py-1.5 bg-vox-accent/10 border border-vox-accent/20 rounded-full text-xs font-bold text-vox-accent">
+                                Tổng số: {Array.isArray(whitelist) ? whitelist.length : 0} cử tri
+                            </span>
+                        </div>
+                        <div className="overflow-hidden border border-vox-accent/10 rounded-2xl bg-white/[0.01]">
+                            <table className="w-full text-left text-sm">
+                                <thead className="bg-white/[0.03] text-slate-400">
+                                    <tr>
+                                        <th className="p-4 font-bold">#</th>
+                                        <th className="p-4 font-bold">Address</th>
+                                        <th className="p-4 font-bold">Status</th>
+                                        <th className="p-4 font-bold text-right">Power</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-white/5">
+                                    {Array.isArray(whitelist) && whitelist.map((item, index) => (
+                                        <tr key={item.id} className="hover:bg-white/5 transition-colors">
+                                            <td className="p-4 text-slate-500">{whitelist.length - index}</td>
+                                            <td className="p-4 font-mono text-slate-300">{item.address}</td>
+                                            <td className="p-4">
+                                                <span className="px-2 py-1 bg-vox-accent/20 text-vox-accent rounded-md text-[10px] font-bold">{item.status}</span>
+                                            </td>
+                                            <td className="p-4 text-right font-bold text-white">{item.power}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    {/* LIVE TRANSACTION SECTION */}
+                    <div className="glass-card p-8 mt-8" data-purpose="live-transactions">
+                        <div className="flex justify-between items-center mb-8">
+                            <div>
+                                <h3 className="text-2xl font-bold">Lịch sử giao dịch (Live)</h3>
+                                <p className="text-sm text-slate-500 mt-1">Dữ liệu được đồng bộ trực tiếp từ Blockchain</p>
+                            </div>
+                            <div className="flex items-center space-x-2 px-4 py-1.5 bg-vox-accent/10 border border-vox-accent/20 rounded-full">
+                                <div className="w-2 h-2 bg-vox-accent rounded-full animate-pulse"></div>
+                                <span className="text-xs font-bold text-vox-accent">Đang lắng nghe Event...</span>
+                            </div>
+                        </div>
+                        <div className="overflow-hidden border border-vox-accent/10 rounded-2xl bg-white/[0.01]">
+                            <table className="w-full text-left text-sm">
+                                <thead className="bg-white/[0.03] text-slate-400">
+                                    <tr>
+                                        <th className="p-4 font-bold">Transaction Hash</th>
+                                        <th className="p-4 font-bold">Block Number</th>
+                                        <th className="p-4 font-bold">Time</th>
+                                        <th className="p-4 font-bold text-right">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-white/5">
+                                    {Array.isArray(txHistory) && txHistory.map(tx => (
+                                        <tr key={tx.id} className="hover:bg-white/5 transition-colors">
+                                            <td className="p-4 font-mono text-vox-accent">{tx.hash}</td>
+                                            <td className="p-4 text-slate-300">{tx.block}</td>
+                                            <td className="p-4 text-slate-500">{tx.time}</td>
+                                            <td className="p-4 text-right">
+                                                <span className="px-2 py-1 bg-vox-accent/20 text-vox-accent rounded-md text-[10px] font-bold">{tx.action}</span>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </main>
+
+                <footer className="py-12 text-center text-slate-600 text-sm border-t border-white/5">
+                    © 2023 <span className="text-vox-accent/60">VOX_GOV</span> Decentralized Governance Platform. Tokyo District Core.
+                </footer>
+            </div>
+        );
+    };
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+</script>
+</body></html>
