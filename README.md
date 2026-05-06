@@ -15,4 +15,5 @@ Nội dung chính:
 - `scripts/deploy.js` : script triển khai hợp đồng lên mạng Hardhat.
 - `test/Voting.test.js` : bộ test cơ bản kiểm tra tính năng khởi tạo ứng viên, whitelist và bỏ phiếu.
 ## Ảnh chụp màn hình 
-![Giao diện trang chủ] (.png)
+![Giao diện trang chủ] (Screenshot 2026-05-06 161540.png)
+
