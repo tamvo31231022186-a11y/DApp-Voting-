@@ -74,4 +74,7 @@ Truy cập ```http://localhost:8000``` để sử dụng ứng dụng.
 ## Công nghệ sử dụng
 * **Solidity** và **Hardhat** cho Blockchain.
 * **React** và **CSS** cho Giao diện.
+
 * **Ethers.js** để kết nối Blockchain và Frontend.
+## Video demo 
+https://drive.google.com/file/d/1siN6fm1tjr-jYqIC1SMieA6Ew4T4g4cU/view 
