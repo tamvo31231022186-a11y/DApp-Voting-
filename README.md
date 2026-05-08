@@ -1,4 +1,4 @@
-# DApp-Voting
+# Ethereum-Voting-Project-NhomD
 ## Tên nhóm và thành viên
 Tên nhóm: Nhóm D  
 
